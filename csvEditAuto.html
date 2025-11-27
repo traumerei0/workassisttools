@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>CSV編集ツール</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:#f3f4f6;
+      margin:0;
+      padding:20px;
+      color:#111827;
+    }
+    h1, h2 {
+      margin-top:0;
+    }
+    .container {
+      max-width:900px; /* 画面幅に近い感じで固定気味 */
+      margin:0 auto;
+      background:#ffffff;
+      border-radius:8px;
+      padding:16px 20px 24px;
+      box-shadow:0 2px 6px rgba(0,0,0,0.06);
+    }
+    .flex {
+      display:flex;
+      gap:16px;
+      flex-wrap:wrap;
+    }
+    .textarea-block {
+      flex:1 1 300px;
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+    }
+    label {
+      font-size:14px;
+      font-weight:600;
+    }
+    textarea {
+      width:100%;
+      box-sizing:border-box;
+      padding:8px;
+      border-radius:4px;
+      border:1px solid #d1d5db;
+      font-family:monospace;
+      resize:vertical;
+      background:#f9fafb;
+    }
+    button {
+      border:none;
+      border-radius:4px;
+      padding:8px 12px;
+      font-size:14px;
+      cursor:pointer;
+      background:#2563eb;
+      color:white;
+    }
+    button:hover {
+      background:#1d4ed8;
+    }
+    #processBtn {
+      margin-top:12px;
+    }
+    .error {
+      margin-top:8px;
+      color:#b91c1c;
+      font-size:13px;
+    }
+    .message {
+      margin-top:8px;
+      color:#047857;
+      font-size:13px;
+    }
+
+    /* 編集モードのカードレイアウト */
+    #editList {
+      margin-top:8px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+    }
+    .row-card {
+      border:1px solid #e5e7eb;
+      border-radius:6px;
+      padding:8px 10px 10px;
+      background:#f9fafb;
+    }
+    .row-header {
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+      margin-bottom:4px;
+    }
+    .company-name {
+      font-weight:600;
+      cursor:pointer;
+      text-decoration:underline;
+      text-decoration-style:dotted;
+    }
+    .company-name:hover {
+      text-decoration-style:solid;
+    }
+    .hp-line {
+      font-size:12px;
+      display:flex;
+      flex-wrap:wrap;
+      gap:4px;
+      align-items:center;
+    }
+    .hp-label {
+      color:#6b7280;
+      min-width:4em;
+    }
+    .hp-link {
+      word-break:break-all;
+    }
+    .hp-link a {
+      color:#2563eb;
+      text-decoration:underline;
+      text-decoration-style:dotted;
+    }
+    .hp-link a:hover {
+      text-decoration-style:solid;
+    }
+
+    .row-fields {
+      margin-top:4px;
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+    }
+    .field-line {
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:6px;
+    }
+    .field-label {
+      font-size:12px;
+      color:#6b7280;
+      min-width:7em;
+    }
+    .field-input {
+      flex:1 1 200px;
+      padding:4px 6px;
+      font-size:12px;
+      border-radius:4px;
+      border:1px solid #d1d5db;
+      box-sizing:border-box;
+    }
+
+    #exportBtn {
+      margin-top:12px;
+    }
+    #exportOutput {
+      margin-top:8px;
+      font-size:12px;
+      background:#f9fafb;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>CSV編集ツール</h1>
+
+  <!-- インポートエリア -->
+  <div id="import-section">
+    <div class="flex">
+      <div class="textarea-block">
+        <label for="namesInput">A欄（会社名 / 1行1社・最大約50行想定）</label>
+        <textarea id="namesInput" rows="18" placeholder="会社名1&#10;会社名2&#10;会社名3&#10;..."></textarea>
+      </div>
+      <div class="textarea-block">
+        <label for="csvInput">B欄（CSV / 1行1社）</label>
+        <textarea id="csvInput" rows="18" placeholder="会社HP,メールアドレス,インスタアカウントURL,FacebookURL,その他SNSアカウント,問い合わせフォームURL,電話番号,住所,従業員数,業務内容&#10;..."></textarea>
+      </div>
+    </div>
+    <button id="processBtn">処理して編集モードへ</button>
+    <div id="error" class="error"></div>
+  </div>
+
+  <!-- 編集エリア -->
+  <div id="edit-section" style="display:none;">
+    <h2>CSV編集モード（会社HP or 問い合わせフォームURLに空欄がある行のみ表示）</h2>
+
+    <div id="editList"></div>
+
+    <button id="exportBtn">エクスポートしてクリップボードにコピー</button>
+    <div class="textarea-block">
+      <label for="exportOutput">エクスポート結果（B欄形式のCSV全行）</label>
+      <textarea id="exportOutput" rows="10" readonly></textarea>
+    </div>
+    <div id="exportMessage" class="message"></div>
+  </div>
+</div>
+
+<script>
+const STORAGE_KEY = "csv_editor_input";
+
+// 読み込み時に復元（inputBox がある画面で）
+window.addEventListener("DOMContentLoaded", () => {
+  const box = document.getElementById("inputBox");
+  if (!box) return;
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (saved !== null) {
+    box.value = saved;
+  }
+  // 入力のたびに保存
+  box.addEventListener("input", () => {
+    localStorage.setItem(STORAGE_KEY, box.value);
+  });
+});
+
+(() => {
+  const namesInput    = document.getElementById('namesInput');
+  const csvInput      = document.getElementById('csvInput');
+  const processBtn    = document.getElementById('processBtn');
+  const importSection = document.getElementById('import-section');
+  const editSection   = document.getElementById('edit-section');
+  const errorBox      = document.getElementById('error');
+  const editList      = document.getElementById('editList');
+  const exportBtn     = document.getElementById('exportBtn');
+  const exportOutput  = document.getElementById('exportOutput');
+  const exportMessage = document.getElementById('exportMessage');
+
+  // rows[i] = [会社名, 会社HP, メールアドレス, インスタ, Facebook, その他SNS, 問い合わせフォームURL, 電話番号, 住所, 従業員数, 業務内容, ...]
+  // ※CSV読み込み時にスペース・""・両端のダブルクォートを除去
+  let rows = [];
+
+  // B欄のカラム情報（会社HPは閲覧のみ）
+  const colMeta = [
+    { index: 1,  label: '会社HP',               editable: false },
+    { index: 2,  label: 'メールアドレス',       editable: true  },
+    { index: 3,  label: 'インスタアカウントURL', editable: true },
+    { index: 4,  label: 'FacebookURL',          editable: true  },
+    { index: 5,  label: 'その他SNSアカウント',   editable: true },
+    { index: 6,  label: '問い合わせフォームURL', editable: true  },
+    { index: 7,  label: '電話番号',             editable: true  },
+    { index: 8,  label: '住所',                 editable: true  },
+    { index: 9,  label: '従業員数',             editable: true  },
+    { index: 10, label: '業務内容',             editable: true  }
+  ];
+
+  function cleanValue(v) {
+    if (v == null) return '';
+    v = v.trim();
+    if (v === '' || v === '""') return '';
+    if (v.length >= 2 && v.startsWith('"') && v.endsWith('"')) {
+      v = v.slice(1, -1);
+    }
+    return v.trim();
+  }
+
+  function copyToClipboard(text) {
+    if (!text) return;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).catch(() => {});
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+    }
+  }
+
+  processBtn.addEventListener('click', () => {
+    errorBox.textContent = '';
+    rows = [];
+    editList.innerHTML = '';
+
+    // A欄: 会社名
+    const nameLines = namesInput.value
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l => l !== '');
+
+    // B欄: CSV
+    const csvLines = csvInput.value
+      .split(/\r?\n/)
+      .map(l => l.trim())
+      .filter(l => l !== '');
+
+    if (nameLines.length === 0 || csvLines.length === 0) {
+      errorBox.textContent = 'A欄・B欄の両方にデータを入れてね。';
+      return;
+    }
+
+    if (nameLines.length !== csvLines.length) {
+      errorBox.textContent = `行数が合いません（会社名: ${nameLines.length}行 / CSV: ${csvLines.length}行）。`;
+      return;
+    }
+
+    // CSVパース（スペース・""・両端のダブルクォート除去。足りないカラムは空で埋める）
+    for (let i = 0; i < csvLines.length; i++) {
+      const line = csvLines[i];
+      const rawCols = line.split(',');
+      const cols = rawCols.map(cleanValue);
+
+      // 最低でも10カラム分は確保（足りなければ空埋め）
+      while (cols.length < 10) {
+        cols.push('');
+      }
+
+      const row = [nameLines[i], ...cols];
+      rows.push(row);
+    }
+
+    renderEditList();
+    importSection.style.display = 'none';
+    editSection.style.display = 'block';
+  });
+
+  function renderEditList() {
+    editList.innerHTML = '';
+
+    rows.forEach((row, index) => {
+      const name    = row[0] || '';
+      const hp      = row[1] || ''; // 会社HP
+      const contact = row[6] || ''; // 問い合わせフォームURL
+
+      const needHp      = !hp || hp.trim() === '';
+      const needContact = !contact || contact.trim() === '';
+
+      // 表示条件: 会社HP or 問い合わせフォームURLのどちらかが空欄
+      if (!needHp && !needContact) {
+        return;
+      }
+
+      const card = document.createElement('div');
+      card.className = 'row-card';
+      card.dataset.index = index;
+
+      // ヘッダー（会社名＋HPリンク）
+      const header = document.createElement('div');
+      header.className = 'row-header';
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'company-name';
+      nameSpan.textContent = name || '(会社名なし)';
+      nameSpan.addEventListener('click', () => {
+        const q = encodeURIComponent(name);
+        const url = `https://www.google.com/search?q=${q}`;
+        window.open(url, '_blank');
+      });
+      header.appendChild(nameSpan);
+
+      const hpLine = document.createElement('div');
+      hpLine.className = 'hp-line';
+
+      const hpLabel = document.createElement('span');
+      hpLabel.className = 'hp-label';
+      hpLabel.textContent = '会社HP:';
+      hpLine.appendChild(hpLabel);
+
+      const hpLink = document.createElement('span');
+      hpLink.className = 'hp-link';
+      if (hp && hp.trim() !== '') {
+        const a = document.createElement('a');
+        const url = hp.startsWith('http') ? hp : 'https://' + hp;
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.textContent = hp;
+        hpLink.appendChild(a);
+      } else {
+        hpLink.textContent = '(未設定)';
+      }
+      hpLine.appendChild(hpLink);
+
+      header.appendChild(hpLine);
+      card.appendChild(header);
+
+      // フィールド群（会社HP以外、全部1行入力欄）
+      const fields = document.createElement('div');
+      fields.className = 'row-fields';
+
+      colMeta.forEach(meta => {
+        if (!meta.editable) {
+          // 会社HPはここでは編集しない（上でリンク表示済み）
+          return;
+        }
+        const line = document.createElement('div');
+        line.className = 'field-line';
+
+        const label = document.createElement('span');
+        label.className = 'field-label';
+        label.textContent = meta.label;
+        line.appendChild(label);
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'field-input';
+        input.value = row[meta.index] || '';
+        input.dataset.index = index.toString();
+        input.dataset.col = meta.index.toString();
+
+        line.appendChild(input);
+        fields.appendChild(line);
+      });
+
+      card.appendChild(fields);
+      editList.appendChild(card);
+    });
+  }
+
+  exportBtn.addEventListener('click', () => {
+    exportMessage.textContent = '';
+
+    // 編集内容を rows に反映
+    const inputs = document.querySelectorAll('.field-input');
+    inputs.forEach(input => {
+      const idx = Number(input.dataset.index);
+      const col = Number(input.dataset.col);
+      if (!Number.isFinite(idx) || !Number.isFinite(col)) return;
+
+      const val = input.value.trim();
+      rows[idx][col] = val;
+    });
+
+    // エクスポート：
+    // A欄の会社名は削除し、B欄形式（会社HP〜業務内容の10カラム）で全行出力
+    const resultLines = rows.map(row => {
+      const outCols = [];
+      for (let col = 1; col <= 10; col++) {
+        outCols.push(row[col] || '');
+      }
+      return outCols.join(',');
+    });
+    const resultText = resultLines.join('\n');
+
+    exportOutput.value = resultText;
+    copyToClipboard(resultText);
+    exportMessage.textContent = 'B欄形式のCSV全行をクリップボードにコピーしたよ。';
+  });
+})();
+</script>
+</body>
+</html>
