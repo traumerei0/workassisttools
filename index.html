@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>テキスト処理＆コピー</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        #initial-ui { display: block; }
+        #result-container { display: none; }
+        .result-item { border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; border-radius: 5px; }
+        .copy-button { margin-left: 10px; padding: 5px 10px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 3px; }
+        .input-text { font-size: 16px; padding: 10px; width: 100%; box-sizing: border-box; }
+        .submit-button { padding: 10px 20px; font-size: 18px; cursor: pointer; background-color: #28a745; color: white; border: none; border-radius: 5px; margin-top: 10px; }
+        .company-name { font-weight: bold; margin-bottom: 5px; display: block; font-size: 1.1em; }
+    </style>
+</head>
+<body>
+
+    <div id="initial-ui">
+        <h2>📝 会社名リストを入力</h2>
+        <textarea id="inputText" class="input-text" rows="10" placeholder="一行に一社ずつ会社名を入力してください。&#10;例:&#10;A社&#10;B株式会社&#10;Cグループ"></textarea>
+        <button id="processButton" class="submit-button">処理開始</button>
+    </div>
+
+    <div id="result-container">
+        <h2>📄 データ収集依頼テキスト</h2>
+        </div>
+
+    <script>
+        const inputTextarea = document.getElementById('inputText');
+        const processButton = document.getElementById('processButton');
+        const initialUi = document.getElementById('initial-ui');
+        const resultContainer = document.getElementById('result-container');
+
+        // ボタンが押されたときの処理
+        processButton.addEventListener('click', () => {
+            // テキストボックスとボタンを非表示にする
+            initialUi.style.display = 'none';
+            // 結果表示エリアを表示する
+            resultContainer.style.display = 'block';
+
+            // 入力テキストを改行で分割し、空行を取り除く
+            const lines = inputTextarea.value.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+
+            // 結果エリアをクリア
+            resultContainer.innerHTML = '<h2>📄 データ収集依頼テキスト</h2>'; 
+
+            if (lines.length === 0) {
+                const p = document.createElement('p');
+                p.textContent = '入力された会社名がありませんでした。';
+                resultContainer.appendChild(p);
+                return;
+            }
+
+            // 各行に対して処理を行う
+            lines.forEach(companyName => {
+                // 依頼テキストを生成
+                const requestText = generateRequestText(companyName);
+                
+                // 表示要素を作成
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'result-item';
+
+                // 会社名表示
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'company-name';
+                nameSpan.textContent = `対象: ${companyName}`;
+                
+                // コピーボタン作成
+                const copyBtn = document.createElement('button');
+                copyBtn.className = 'copy-button';
+                copyBtn.textContent = '依頼テキストをコピー';
+                
+                // コピーボタンのイベントリスナー設定
+                copyBtn.addEventListener('click', () => {
+                    copyToClipboard(requestText, copyBtn);
+                });
+
+                // 要素をitemDivに追加
+                itemDiv.appendChild(nameSpan);
+                itemDiv.appendChild(copyBtn);
+                
+                // 結果コンテナに追加
+                resultContainer.appendChild(itemDiv);
+            });
+        });
+
+        /**
+         * 会社名から依頼テキストを生成する関数
+         * @param {string} companyName - 会社名
+         * @returns {string} - 生成された依頼テキスト
+         */
+        function generateRequestText(companyName) {
+            // ここに引数（companyName）を代入する
+            const template = `データ入力の作業をしています。
+
+会社名：${companyName}
+上記の会社名を検索して、以下の情報を公式サイト・自治体企業データベース・SNS公式ページなどから収集してください。
+
+取得したい情報：
+・会社HP
+・メールアドレス（例：info@, contact@, recruit@）
+・インスタアカウントURL
+・その他SNSアカウントURL（X／Twitter, Facebook, LINE, YouTubeなど）
+・問い合わせフォームURL
+・電話番号
+・住所
+・従業員数
+・業務内容（主要サービスを20文字以内で）
+
+・情報がない場合は空文字（“”）にしてください。スペースや「‐」などは入れないでください。
+・電話番号は-（ハイフン）を入れる形式にしてください。
+・最後に、次の順番でCSV1行のデータとしてテキストボックスに出力してください。カラムは計10ありよく間違いがあるのでカラムのズレや不足に注意してください：
+「会社HP,メールアドレス,インスタアカウントURL,FacebookURL,その他SNSアカウント,問い合わせフォームURL,電話番号,住所,従業員数,業務内容」`;
+            
+            return template;
+        }
+
+        /**
+         * テキストをクリップボードにコピーする関数
+         * @param {string} text - コピーするテキスト
+         * @param {HTMLElement} buttonElement - コピーボタン要素
+         */
+        function copyToClipboard(text, buttonElement) {
+            // クリップボードAPIを使用してコピー
+            navigator.clipboard.writeText(text)
+                .then(() => {
+                    // コピー成功時のフィードバック
+                    const originalText = buttonElement.textContent;
+                    buttonElement.textContent = 'コピーしました！';
+                    buttonElement.style.backgroundColor = '#28a745'; // 緑色に変更
+                    
+                    // 2秒後に元に戻す
+                    setTimeout(() => {
+                        buttonElement.textContent = originalText;
+                        buttonElement.style.backgroundColor = '#007bff'; // 青色に戻す
+                    }, 2000);
+                })
+                .catch(err => {
+                    // エラー時の処理 (主に旧ブラウザやセキュリティ制限)
+                    console.error('コピーに失敗しました', err);
+                    alert('コピーに失敗しました。お手数ですが手動でコピーしてください。');
+                });
+        }
+    </script>
+
+</body>
+</html>
