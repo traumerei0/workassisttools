@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8" />
+<title>Key Test</title>
+<style>
+  body {
+    font-family: sans-serif;
+    padding: 20px;
+  }
+  input {
+    font-size: 18px;
+    padding: 6px 10px;
+    width: 250px;
+  }
+  button {
+    padding: 8px 16px;
+    font-size: 16px;
+    margin-left: 10px;
+  }
+</style>
+</head>
+<body>
+
+<h2>API Key 入力テスト</h2>
+
+<input id="apikey" type="password" placeholder="API Key を入力">
+<button id="saveBtn">保存</button>
+
+<script>
+// 保存ボタンを押した時
+document.getElementById("saveBtn").addEventListener("click", () => {
+  const key = document.getElementById("apikey").value;
+
+  localStorage.setItem("my_api_key", key);
+
+  console.log("保存したよ:", key);
+  alert("保存したよ！");
+});
+
+// ページ読み込み時に localStorage から読む
+window.addEventListener("load", () => {
+  const key = localStorage.getItem("my_api_key");
+  console.log("読み出した値:", key);
+});
+</script>
+
+</body>
+</html>
