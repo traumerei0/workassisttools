@@ -32,7 +32,7 @@
 document.getElementById("saveBtn").addEventListener("click", () => {
   const key = document.getElementById("apikey").value;
 
-  localStorage.setItem("my_api_key", key);
+  localStorage.setItem("my_api_key", key);//
 
   console.log("保存したよ:", key);
   alert("保存したよ！");
