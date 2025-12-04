@@ -1,7 +1,6 @@
-<!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="UTF-8">
   <title>CSV編集ツール</title>
   <style>
     body {
@@ -33,6 +32,12 @@
       flex-direction:column;
       gap:4px;
     }
+    .label-row {
+      display:flex;
+      align-items:center;
+      gap:8px;
+      justify-content:space-between;
+    }
     label {
       font-size:14px;
       font-weight:600;
@@ -58,6 +63,14 @@
     }
     button:hover {
       background:#1d4ed8;
+    }
+    .paste-btn {
+      padding:4px 8px;
+      font-size:11px;
+      background:#6b7280;
+    }
+    .paste-btn:hover {
+      background:#4b5563;
     }
     #processBtn {
       margin-top:12px;
@@ -109,7 +122,10 @@
       align-items:center;
     }
     .hp-label {
-      color:#6b7280;
+      color:#2563eb;
+      text-decoration:underline;
+      cursor:pointer;
+      font-weight:600;
     }
 
     .row-fields {
@@ -129,6 +145,12 @@
       color:#6b7280;
       min-width:7em;
     }
+    .field-label.search-link {
+      color:#2563eb;
+      text-decoration:underline;
+      cursor:pointer;
+      font-weight:600;
+    }
     .field-input {
       padding:4px 6px;
       font-size:12px;
@@ -138,6 +160,15 @@
       width:220px;      /* 全入力欄を短めに固定 */
       max-width:100%;
       flex:0 0 220px;
+    }
+    .move-btn {
+      padding:2px 6px;
+      font-size:10px;
+      background:#e5e7eb;
+      color:#374151;
+    }
+    .move-btn:hover {
+      background:#d1d5db;
     }
 
     #exportBtn {
@@ -155,15 +186,25 @@
   <h1>CSV編集ツール</h1>
 
   <!-- インポートエリア -->
-  <div id="import-section">
+  <div id="import-section" style="display: block;">
     <div class="flex">
       <div class="textarea-block">
-        <label for="namesInput">A欄（会社名 / 1行1社・最大約50行想定）</label>
-        <textarea id="namesInput" rows="18" placeholder="会社名1&#10;会社名2&#10;会社名3&#10;..."></textarea>
+        <div class="label-row">
+          <label for="namesInput">A欄（会社名 / 1行1社・最大約50行想定）</label>
+          <button type="button" class="paste-btn" data-target="namesInput">ペースト</button>
+        </div>
+        <textarea id="namesInput" rows="18" placeholder="会社名1
+会社名2
+会社名3
+..."></textarea>
       </div>
       <div class="textarea-block">
-        <label for="csvInput">B欄（CSV / 1行1社）</label>
-        <textarea id="csvInput" rows="18" placeholder="会社HP,メールアドレス,インスタアカウントURL,FacebookURL,その他SNSアカウント,問い合わせフォームURL,電話番号,住所,従業員数,業務内容&#10;..."></textarea>
+        <div class="label-row">
+          <label for="csvInput">B欄（CSV / 1行1社）</label>
+          <button type="button" class="paste-btn" data-target="csvInput">ペースト</button>
+        </div>
+        <textarea id="csvInput" rows="18" placeholder="会社HP,メールアドレス,インスタアカウントURL,FacebookURL,その他SNSアカウント,問い合わせフォームURL,電話番号,住所,従業員数,業務内容
+..."></textarea>
       </div>
     </div>
     <button id="processBtn">処理して編集モードへ</button>
@@ -171,7 +212,7 @@
   </div>
 
   <!-- 編集エリア -->
-  <div id="edit-section" style="display:none;">
+  <div id="edit-section" style="display: none;">
     <h2>CSV編集モード（全件表示）</h2>
 
     <div id="editList"></div>
@@ -198,8 +239,7 @@
   const exportOutput  = document.getElementById('exportOutput');
   const exportMessage = document.getElementById('exportMessage');
 
-  // rows[i] = [会社名, 会社HP, メールアドレス, インスタ, Facebook, その他SNS, 問い合わせフォームURL, 電話番号, 住所, 従業員数, 業務内容, ...]
-  // 読み込み時にスペース・""・両端のダブルクォート除去
+  // rows[i] = [会社名, 会社HP, メールアドレス, インスタ, Facebook, その他SNS, 問い合わせフォームURL, 電話番号, 住所, 従業員数, 業務内容]
   let rows = [];
 
   const colMeta = [
@@ -238,6 +278,28 @@
       document.body.removeChild(ta);
     }
   }
+
+  async function pasteTo(targetId) {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    if (!navigator.clipboard || !navigator.clipboard.readText) {
+      alert('クリップボードの読み取りに対応していないブラウザの可能性があるよ。');
+      return;
+    }
+    try {
+      const text = await navigator.clipboard.readText();
+      el.value = text;
+    } catch (e) {
+      alert('クリップボードからの貼り付けに失敗したかも。ブラウザの許可設定を確認してね。');
+    }
+  }
+
+  document.querySelectorAll('.paste-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const target = btn.dataset.target;
+      if (target) pasteTo(target);
+    });
+  });
 
   processBtn.addEventListener('click', () => {
     errorBox.textContent = '';
@@ -282,6 +344,54 @@
     editSection.style.display = 'block';
   });
 
+  function moveValue(index, col, delta) {
+    const targetCol = col + delta;
+    if (targetCol < 1 || targetCol > 10) return;
+
+    const srcVal = rows[index][col] || '';
+    if (!srcVal) return;
+
+    rows[index][col] = '';
+    rows[index][targetCol] = srcVal;
+
+    const srcInput = document.querySelector(
+      '.field-input[data-index="' + index + '"][data-col="' + col + '"]'
+    );
+    const destInput = document.querySelector(
+      '.field-input[data-index="' + index + '"][data-col="' + targetCol + '"]'
+    );
+
+    if (srcInput) srcInput.value = '';
+    if (destInput) destInput.value = srcVal;
+  }
+
+  function addMoveButtons(wrapper, inputEl) {
+    const upBtn = document.createElement('button');
+    upBtn.type = 'button';
+    upBtn.textContent = '↑';
+    upBtn.className = 'move-btn';
+    upBtn.addEventListener('click', () => {
+      const idx = Number(inputEl.dataset.index);
+      const col = Number(inputEl.dataset.col);
+      if (!Number.isFinite(idx) || !Number.isFinite(col)) return;
+      moveValue(idx, col, -1);
+    });
+
+    const downBtn = document.createElement('button');
+    downBtn.type = 'button';
+    downBtn.textContent = '↓';
+    downBtn.className = 'move-btn';
+    downBtn.addEventListener('click', () => {
+      const idx = Number(inputEl.dataset.index);
+      const col = Number(inputEl.dataset.col);
+      if (!Number.isFinite(idx) || !Number.isFinite(col)) return;
+      moveValue(idx, col, +1);
+    });
+
+    wrapper.appendChild(upBtn);
+    wrapper.appendChild(downBtn);
+  }
+
   function renderEditList() {
     editList.innerHTML = '';
 
@@ -309,21 +419,10 @@
       const hpLine = document.createElement('div');
       hpLine.className = 'hp-line';
 
-      const hpBtn = document.createElement('button');
-      hpBtn.type = 'button';
-      hpBtn.textContent = '遷移';
-      hpBtn.style.padding = '3px 8px';
-      hpBtn.style.fontSize = '11px';
-      hpLine.appendChild(hpBtn);
-
       const hpLabel = document.createElement('span');
       hpLabel.className = 'hp-label';
       hpLabel.textContent = '会社HP';
       hpLine.appendChild(hpLabel);
-
-      const hpBracket = document.createElement('span');
-      hpBracket.textContent = '[遷移]:';
-      hpLine.appendChild(hpBracket);
 
       const hpInput = document.createElement('input');
       hpInput.type = 'text';
@@ -334,12 +433,16 @@
       hpInput.dataset.col = '1';
       hpLine.appendChild(hpInput);
 
-      hpBtn.addEventListener('click', () => {
+      // 会社HPラベルクリックでURL遷移
+      hpLabel.addEventListener('click', () => {
         const val = (hpInput.value || '').trim();
         if (!val) return;
         const url = val.startsWith('http') ? val : 'https://' + val;
         window.open(url, '_blank');
       });
+
+      // HP入力欄にも↑↓ボタン
+      addMoveButtons(hpLine, hpInput);
 
       header.appendChild(hpLine);
       card.appendChild(header);
@@ -348,7 +451,7 @@
       fields.className = 'row-fields';
 
       colMeta.forEach(meta => {
-        if (meta.index === 1) return; // HPは上で処理済み
+        if (meta.index === 1) return; // 1列目（会社HP）は上で処理済み
 
         const line = document.createElement('div');
         line.className = 'field-line';
@@ -356,6 +459,20 @@
         const label = document.createElement('span');
         label.className = 'field-label';
         label.textContent = meta.label;
+
+        // 電話番号・住所はクリックでGoogle検索
+        if (meta.label === '電話番号' || meta.label === '住所') {
+          label.classList.add('search-link');
+          label.addEventListener('click', () => {
+            const company = rows[index][0] || '';
+            if (!company) return;
+            const suffix = meta.label === '電話番号' ? ' 電話番号' : ' 住所';
+            const q = encodeURIComponent(company + suffix);
+            const url = 'https://www.google.com/search?q=' + q;
+            window.open(url, '_blank');
+          });
+        }
+
         line.appendChild(label);
 
         const input = document.createElement('input');
@@ -366,6 +483,10 @@
         input.dataset.col = meta.index.toString();
 
         line.appendChild(input);
+
+        // 各入力欄に↑↓ボタン
+        addMoveButtons(line, input);
+
         fields.appendChild(line);
       });
 
@@ -401,5 +522,6 @@
   });
 })();
 </script>
+
 </body>
 </html>
