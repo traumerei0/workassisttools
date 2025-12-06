@@ -1,3 +1,4 @@
+<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -50,6 +51,17 @@
       border:1px solid #d1d5db;
       font-family:monospace;
       resize:vertical;
+      background:#f9fafb;
+    }
+    input[type="password"],
+    .api-input {
+      padding:6px 8px;
+      border-radius:4px;
+      border:1px solid #d1d5db;
+      font-size:13px;
+      box-sizing:border-box;
+      width:260px;
+      max-width:100%;
       background:#f9fafb;
     }
     button {
@@ -157,7 +169,7 @@
       border-radius:4px;
       border:1px solid #d1d5db;
       box-sizing:border-box;
-      width:220px;      /* 全入力欄を短めに固定 */
+      width:220px;
       max-width:100%;
       flex:0 0 220px;
     }
@@ -186,7 +198,17 @@
   <h1>CSV編集ツール</h1>
 
   <!-- インポートエリア -->
-  <div id="import-section" style="display: block;">
+  <div id="import-section" style="display:block;">
+
+    <!-- APIキー入力 -->
+    <div class="textarea-block" style="margin-bottom:8px;">
+      <div class="label-row">
+        <label for="apiKeyInput">APIキー（scraper用$places用 の順）</label>
+      </div>
+      <input id="apiKeyInput" type="password" class="api-input"
+             placeholder="scraperKey$placesKey">
+    </div>
+
     <div class="flex">
       <div class="textarea-block">
         <div class="label-row">
@@ -209,10 +231,16 @@
     </div>
     <button id="processBtn">処理して編集モードへ</button>
     <div id="error" class="error"></div>
+    <div class="message">
+      ※ 編集画面表示後、<br>
+      ・会社HPあり＆問い合わせフォーム空欄の行 → Scraper APIで自動補完（キー1個目）<br>
+      ・住所空欄の行 → Places API (New) で会社名完全一致の正式住所だけ自動補完（キー2個目）<br>
+      （キー未設定の機能はスキップ）
+    </div>
   </div>
 
   <!-- 編集エリア -->
-  <div id="edit-section" style="display: none;">
+  <div id="edit-section" style="display:none;">
     <h2>CSV編集モード（全件表示）</h2>
 
     <div id="editList"></div>
@@ -230,6 +258,7 @@
 (() => {
   const namesInput    = document.getElementById('namesInput');
   const csvInput      = document.getElementById('csvInput');
+  const apiKeyInput   = document.getElementById('apiKeyInput');
   const processBtn    = document.getElementById('processBtn');
   const importSection = document.getElementById('import-section');
   const editSection   = document.getElementById('edit-section');
@@ -238,6 +267,13 @@
   const exportBtn     = document.getElementById('exportBtn');
   const exportOutput  = document.getElementById('exportOutput');
   const exportMessage = document.getElementById('exportMessage');
+
+  // ★ API設定（キーは入力欄から取得） ★
+  const SCRAPER_API_ENDPOINT = 'https://scraper-api-49919750176.asia-northeast1.run.app/scrape_batch';
+  const PLACES_ENDPOINT      = 'https://places.googleapis.com/v1/places:searchText';
+
+  let scraperApiKey = '';
+  let placesApiKey  = '';
 
   // rows[i] = [会社名, 会社HP, メールアドレス, インスタ, Facebook, その他SNS, 問い合わせフォームURL, 電話番号, 住所, 従業員数, 業務内容]
   let rows = [];
@@ -255,6 +291,7 @@
     { index: 10, label: '業務内容',             editable: true  }
   ];
 
+  // --- 共通クリーン関数 ---
   function cleanValue(v) {
     if (v == null) return '';
     v = v.trim();
@@ -301,10 +338,366 @@
     });
   });
 
+  // === ここから「CSVクリーン（自動整列）」ロジック ===
+
+  const PREFS = [
+    "北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県",
+    "茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県",
+    "新潟県","富山県","石川県","福井県","山梨県","長野県",
+    "岐阜県","静岡県","愛知県","三重県",
+    "滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県",
+    "鳥取県","島根県","岡山県","広島県","山口県",
+    "徳島県","香川県","愛媛県","高知県",
+    "福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"
+  ];
+
+  function preprocessLine(line) {
+    // カンマ前後のスペースだけ削る（住所内のスペースは残す）
+    return line.replace(/\s*,\s*/g, ',');
+  }
+
+  // 電話番号: 数字とハイフンのみ ＋ ハイフン必須
+  function isTel(v) {
+    return /^[0-9\-]+$/.test(v) && v.includes('-');
+  }
+
+  // 従業員数: 数字のみ
+  function isEmployees(v) {
+    return /^[0-9]+$/.test(v);
+  }
+
+  function isPrefAddress(v) {
+    return PREFS.some(p => v.startsWith(p));
+  }
+
+  // 1行分を「中身ベース」で10カラムに再配置する（クリーン本体）
+  function normalizeRow(rawLine) {
+    const s = preprocessLine(rawLine);
+    const rawParts = s.split(',');
+
+    const tokens = rawParts
+      .map((v, idx) => ({
+        value: cleanValue(v),
+        idx
+      }))
+      .filter(t => t.value !== '');
+
+    const httpGeneric = [];
+    const instas      = [];
+    const facebooks   = [];
+    const mails       = [];
+    const tels        = [];
+    const addrs       = [];
+    const employees   = [];
+    const others      = [];
+    const unknown     = [];
+
+    tokens.forEach(t => {
+      const v = t.value;
+
+      if (v.startsWith('https://www.instagram.com/')) {
+        instas.push(t);
+      } else if (v.startsWith('https://www.facebook.com/')) {
+        facebooks.push(t);
+      } else if (v.includes('@')) {
+        mails.push(t);
+      } else if (isTel(v)) {
+        tels.push(t);
+      } else if (isPrefAddress(v)) {
+        addrs.push(t);
+      } else if (isEmployees(v)) {
+        employees.push(t);
+      } else if (v.startsWith('http')) {
+        httpGeneric.push(t);
+      } else {
+        unknown.push(t);
+      }
+    });
+
+    // 会社HP候補: httpGeneric の中で一番短いURL
+    let hpToken = null;
+    if (httpGeneric.length > 0) {
+      hpToken = httpGeneric
+        .slice()
+        .sort((a, b) => a.value.length - b.value.length)[0];
+    }
+
+    const used = new Set();
+    function useToken(t) {
+      if (!t) return;
+      used.add(t.idx);
+    }
+
+    let hp        = hpToken ? hpToken.value       : '';
+    let mail      = mails.length      ? mails[0].value      : '';
+    let insta     = instas.length     ? instas[0].value     : '';
+    let fb        = facebooks.length  ? facebooks[0].value  : '';
+    let contact   = '';
+    let tel       = tels.length       ? tels[0].value       : '';
+    let addr      = addrs.length      ? addrs[0].value      : '';
+    let emp       = employees.length  ? employees[0].value  : '';
+    let otherSNS  = '';
+    let business  = '';
+
+    if (hpToken)      useToken(hpToken);
+    if (mails[0])     useToken(mails[0]);
+    if (instas[0])    useToken(instas[0]);
+    if (facebooks[0]) useToken(facebooks[0]);
+    if (tels[0])      useToken(tels[0]);
+    if (addrs[0])     useToken(addrs[0]);
+    if (employees[0]) useToken(employees[0]);
+
+    // 問い合わせフォーム: HPの子ページになっている httpGeneric の残り
+    if (hp) {
+      const contactCand = httpGeneric.find(
+        t => !used.has(t.idx) && t.value.startsWith(hp)
+      );
+      if (contactCand) {
+        contact = contactCand.value;
+        useToken(contactCand);
+      }
+    }
+
+    // その他SNS: 残りの http / インスタ / FB などまとめる
+    const snsParts = [];
+
+    httpGeneric.forEach(t => {
+      if (used.has(t.idx)) return;
+      snsParts.push(t.value);
+      useToken(t);
+    });
+
+    instas.forEach((t, i) => {
+      if (i === 0) return; // 1つ目は insta に使った
+      if (used.has(t.idx)) return;
+      snsParts.push(t.value);
+      useToken(t);
+    });
+
+    facebooks.forEach((t, i) => {
+      if (i === 0) return; // 1つ目は fb に使った
+      if (used.has(t.idx)) return;
+      snsParts.push(t.value);
+      useToken(t);
+    });
+
+    if (snsParts.length > 0) {
+      otherSNS = snsParts.join(' / ');
+    }
+
+    // 残りすべてを業務内容に流す
+    const businessParts = [];
+    tokens.forEach(t => {
+      if (used.has(t.idx)) return;
+      businessParts.push(t.value);
+      useToken(t);
+    });
+
+    if (businessParts.length > 0) {
+      business = businessParts.join(' / ');
+    }
+
+    return [
+      hp,        // 0: 会社HP
+      mail,      // 1: メール
+      insta,     // 2: インスタURL
+      fb,        // 3: FacebookURL
+      otherSNS,  // 4: その他SNS
+      contact,   // 5: 問い合わせフォームURL
+      tel,       // 6: 電話番号
+      addr,      // 7: 住所
+      emp,       // 8: 従業員数
+      business   // 9: 業務内容
+    ];
+  }
+
+  // === Scraper API: 問い合わせフォーム自動補完 ===
+  function fillContactsWithScraper() {
+    if (!scraperApiKey) {
+      console.warn('scraperApiKey が未設定なので問い合わせURL自動補完はスキップ');
+      return Promise.resolve();
+    }
+
+    const urlList = [];
+    const urlToIndices = {};
+
+    rows.forEach((row, idx) => {
+      const hp      = (row[1] || '').trim(); // 会社HP
+      const contact = (row[6] || '').trim(); // 問い合わせフォームURL
+      if (hp && !contact) {
+        urlList.push(hp);
+        if (!urlToIndices[hp]) {
+          urlToIndices[hp] = [];
+        }
+        urlToIndices[hp].push(idx);
+      }
+    });
+
+    if (urlList.length === 0) {
+      return Promise.resolve();
+    }
+
+    const uniqueUrls = Array.from(new Set(urlList));
+
+    return fetch(SCRAPER_API_ENDPOINT, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': scraperApiKey
+      },
+      body: JSON.stringify({ urls: uniqueUrls })
+    })
+      .then(res => {
+        if (!res.ok) {
+          console.error('Scraper API 呼び出し失敗', res.status);
+          return null;
+        }
+        return res.json();
+      })
+      .then(data => {
+        if (!data || !Array.isArray(data.results)) {
+          return;
+        }
+
+        data.results.forEach(item => {
+          const url        = item.url;
+          const contactUrl = (item.contact_url || '').trim();
+          if (!url || !contactUrl) return;
+
+          const indices = urlToIndices[url];
+          if (!indices || indices.length === 0) return;
+
+          indices.forEach(i => {
+            if (!rows[i][6]) {
+              rows[i][6] = contactUrl;
+            }
+            const input = document.querySelector(
+              '.field-input[data-index="' + i + '"][data-col="6"]'
+            );
+            if (input && !input.value) {
+              input.value = contactUrl;
+            }
+          });
+        });
+      })
+      .catch(err => {
+        console.error('Scraper API 通信エラー', err);
+      });
+  }
+
+  // === Places API (New): 住所自動補完（会社名完全一致のみ） ===
+
+  // 会社名の正規化（空白除去・全角半角空白まとめ）
+  function normalizeNameForCompare(name) {
+    if (!name) return '';
+    return name.replace(/\s+/g, '').replace(/[　]/g, '');
+  }
+
+  async function fetchAddressForName(companyName) {
+    if (!placesApiKey) return '';
+
+    const body = {
+      textQuery: companyName,
+      languageCode: 'ja',
+      regionCode: 'JP'
+    };
+
+    try {
+      const res = await fetch(PLACES_ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': placesApiKey,
+          // displayName も欲しいので FieldMask に追加
+          'X-Goog-FieldMask': 'places.displayName,places.formattedAddress'
+        },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        console.error('Places API HTTPエラー:', res.status);
+        return '';
+      }
+
+      const data = await res.json();
+      if (!data.places || !Array.isArray(data.places) || data.places.length === 0) {
+        return '';
+      }
+
+      const targetNorm = normalizeNameForCompare(companyName);
+
+      // displayName.text が会社名と完全一致（空白無視）するものだけ採用
+      const matched = data.places.find(p => {
+        if (!p.displayName || !p.displayName.text) return false;
+        const candNorm = normalizeNameForCompare(p.displayName.text);
+        return candNorm === targetNorm;
+      });
+
+      const place = matched || null;
+      if (!place || !place.formattedAddress) {
+        return '';
+      }
+
+      return place.formattedAddress;
+    } catch (e) {
+      console.error('Places API 通信エラー:', e);
+      return '';
+    }
+  }
+
+  async function fillAddressesWithPlaces() {
+    if (!placesApiKey) {
+      console.warn('placesApiKey が未設定なので住所自動補完はスキップ');
+      return;
+    }
+
+    const targets = [];
+    rows.forEach((row, idx) => {
+      const name = (row[0] || '').trim();
+      const addr = (row[8] || '').trim(); // 住所カラム
+      if (name && !addr) {
+        targets.push({ index: idx, name });
+      }
+    });
+
+    if (targets.length === 0) return;
+
+    // 1社ずつ順次呼び出し（件数少なめ想定なのでこれで十分）
+    for (const t of targets) {
+      const addr = await fetchAddressForName(t.name);
+      if (addr) {
+        rows[t.index][8] = addr;
+        const input = document.querySelector(
+          '.field-input[data-index="' + t.index + '"][data-col="8"]'
+        );
+        if (input) {
+          input.value = addr;
+        }
+      }
+      // 必要なら軽くウェイト入れてもいい（コメントアウト）
+      // await new Promise(r => setTimeout(r, 100));
+    }
+  }
+
+  // 「処理して編集モードへ」ボタン
   processBtn.addEventListener('click', () => {
     errorBox.textContent = '';
     rows = [];
     editList.innerHTML = '';
+
+    // APIキーを分解してセット
+    scraperApiKey = '';
+    placesApiKey  = '';
+    const rawKey = (apiKeyInput.value || '').trim();
+    if (rawKey) {
+      const parts = rawKey.split('$');
+      if (parts.length >= 1) {
+        scraperApiKey = (parts[0] || '').trim();
+      }
+      if (parts.length >= 2) {
+        placesApiKey = (parts[1] || '').trim();
+      }
+    }
 
     const nameLines = namesInput.value
       .split(/\r?\n/)
@@ -322,26 +715,34 @@
     }
 
     if (nameLines.length !== csvLines.length) {
-      errorBox.textContent = `行数が合いません（会社名: ${nameLines.length}行 / CSV: ${csvLines.length}行）。`;
+      errorBox.textContent =
+        '行数が合いません（会社名: ' +
+        nameLines.length +
+        '行 / CSV: ' +
+        csvLines.length +
+        '行）。';
       return;
     }
 
+    // 1行ずつ「CSVクリーン（normalizeRow）」をかけて rows に入れる
     for (let i = 0; i < csvLines.length; i++) {
       const line = csvLines[i];
-      const rawCols = line.split(',');
-      const cols = rawCols.map(cleanValue);
-
-      while (cols.length < 10) {
-        cols.push('');
-      }
+      const cols = normalizeRow(line); // ← クリーン＋自動整列済み10カラム
 
       const row = [nameLines[i], ...cols];
       rows.push(row);
     }
 
+    // 編集画面を先に表示
     renderEditList();
     importSection.style.display = 'none';
     editSection.style.display = 'block';
+
+    // そのあとで Scraper API & Places API を非同期で実行
+    // 問い合わせフォーム → 住所 の順に呼び出し
+    fillContactsWithScraper().finally(() => {
+      fillAddressesWithPlaces();
+    });
   });
 
   function moveValue(index, col, delta) {
@@ -411,7 +812,7 @@
       nameSpan.textContent = name || '(会社名なし)';
       nameSpan.addEventListener('click', () => {
         const q = encodeURIComponent(name);
-        const url = `https://www.google.com/search?q=${q}`;
+        const url = 'https://www.google.com/search?q=' + q;
         window.open(url, '_blank');
       });
       header.appendChild(nameSpan);
@@ -522,6 +923,5 @@
   });
 })();
 </script>
-
 </body>
 </html>
