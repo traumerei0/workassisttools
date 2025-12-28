@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="ja">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Full Memo</title>
+  <style>
+    :root {
+      --bg: #f6f7fb;
+      --bar: #ffffffcc;
+      --border: #e6e8f0;
+      --text: #1f2937;
+      --muted: #6b7280;
+      --btn: #ffffff;
+      --btnBorder: #d9deea;
+      --btnHover: #f3f6ff;
+      --focus: #93c5fd;
+    }
+
+    html,
+    body {
+      height: 100%;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans JP", "Hiragino Sans", "Yu Gothic", sans-serif;
+    }
+
+    .app {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .bar {
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+      align-items: center;
+      border-bottom: 1px solid var(--border);
+      background: var(--bar);
+      backdrop-filter: blur(8px);
+    }
+
+    button {
+      flex: 0 0 auto;
+      padding: 8px 12px;
+      font-size: 15px;
+      line-height: 1;
+      min-height: 36px;
+      border: 1px solid var(--btnBorder);
+      background: var(--btn);
+      color: var(--text);
+      border-radius: 10px;
+      cursor: pointer;
+      user-select: none;
+      touch-action: manipulation;
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
+    }
+
+    button:hover {
+      background: var(--btnHover);
+    }
+
+    button:active {
+      transform: translateY(1px);
+    }
+
+    .right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0;
+      /* タブ間の余白なし */
+      padding: 0;
+      /* 高さの余白なし */
+      align-items: flex-end;
+      /* 下線が揃うように */
+      border-bottom: 1px solid var(--border);
+      background: var(--bar);
+      overflow-x: auto;
+    }
+
+    .tab {
+      padding: 6px 10px;
+      font-size: 14px;
+      border-radius: 0;
+      /* 角丸無しでタブ感 */
+      border: none;
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+    }
+
+    .tab.active {
+      border-bottom-color: var(--focus);
+      background: rgba(147, 197, 253, 0.06);
+    }
+
+    .tab.add {
+      padding: 6px 12px;
+      margin-left: 8px;
+      border-left: 1px solid var(--border);
+    }
+
+    .tabItem {
+      display: inline-flex;
+      align-items: center;
+      margin: 0;
+      padding: 0;
+    }
+
+    .tabClose {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px 6px;
+      margin-left: 4px;
+      font-size: 12px;
+      border: none;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .tabClose:active {
+      transform: translateY(1px);
+    }
+
+    .lines {
+      font-size: 13px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+
+    .status {
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 40vw;
+      text-align: right;
+    }
+
+    textarea {
+      flex: 1;
+      width: 100%;
+      border: none;
+      outline: none;
+      resize: none;
+      padding: 14px;
+      font-size: 16px;
+      line-height: 1.6;
+      background: transparent;
+      color: var(--text);
+      caret-color: var(--text);
+      box-sizing: border-box;
+    }
+
+    textarea:focus {
+      box-shadow: inset 0 0 0 3px rgba(147, 197, 253, 0.35);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+    <div class="bar">
+      <button id="copyBtn" type="button">Copy</button>
+      <button id="pasteBtn" type="button">Paste</button>
+      <button id="saveBtn" type="button">Save</button>
+      <button id="shareBtn" type="button">Share</button>
+      <button id="importBtn" type="button">Import</button>
+
+      <div class="right">
+        <div class="lines" id="lines">行: 1</div>
+        <div class="status" id="status">ready</div>
+      </div>
+    </div>
+
+    <div class="tabs" id="tabs"></div>
+    <textarea id="memo" placeholder="ここにメモ…"></textarea>
+    <input id="importInput" type="file" accept=".json,application/json" style="display:none" />
+  </div>
+
+  <script>
+    const memo = document.getElementById('memo');
+    const statusEl = document.getElementById('status');
+    const linesEl = document.getElementById('lines');
+    const copyBtn = document.getElementById('copyBtn');
+    const pasteBtn = document.getElementById('pasteBtn');
+
+    const setStatus = (msg) => {
+      statusEl.textContent = msg;
+      clearTimeout(setStatus._t);
+      setStatus._t = setTimeout(() => statusEl.textContent = 'ready', 1200);
+    };
+
+    // モバイルのアドレスバー等で高さがズレる対策
+    const setVh = () => {
+      document.documentElement.style.setProperty('--vh', `${window.innerHeight * 0.01}px`);
+      document.body.style.height = `calc(var(--vh, 1vh) * 100)`;
+    };
+    window.addEventListener('resize', setVh);
+    setVh();
+
+    const countLines = (text) => {
+      // 空でも「1行」扱い（見た目が自然）
+      if (text.length === 0) return 1;
+      // 改行コードは \n に統一される前提（textarea）
+      return text.split('\n').length;
+    };
+
+    const updateLineCount = () => {
+      linesEl.textContent = `行: ${countLines(memo.value)}`;
+    };
+
+    memo.addEventListener('input', updateLineCount);
+    updateLineCount();
+
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(memo.value);
+        setStatus('copied');
+      } catch (e) {
+        memo.focus();
+        memo.select();
+        const ok = document.execCommand('copy');
+        setStatus(ok ? 'copied' : 'copy failed');
+      }
+    });
+
+    pasteBtn.addEventListener('click', async () => {
+      try {
+        const text = await navigator.clipboard.readText();
+        const start = memo.selectionStart ?? memo.value.length;
+        const end = memo.selectionEnd ?? memo.value.length;
+        memo.setRangeText(text, start, end, 'end');
+        memo.focus();
+        updateLineCount();
+        setStatus('pasted');
+      } catch (e) {
+        setStatus('paste blocked');
+        memo.focus();
+      }
+    });
+
+    // --- Tabs, storage and autosave ---
+    const TABS_KEY = 'fullmemo:tabs';
+    const CUR_TAB_KEY = 'fullmemo:currentTabId';
+
+    const tabsContainer = document.getElementById('tabs');
+    let tabs = [];
+    let currentTabId = null;
+
+    const persistTabs = () => {
+      try {
+        localStorage.setItem(TABS_KEY, JSON.stringify(tabs));
+        if (currentTabId) localStorage.setItem(CUR_TAB_KEY, currentTabId);
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    const saveCurrentToMemory = () => {
+      const t = tabs.find(x => x.id === currentTabId);
+      if (t) {
+        t.content = memo.value;
+        t.updatedAt = Date.now();
+      }
+    };
+
+    const saveToLocal = () => {
+      try {
+        saveCurrentToMemory();
+        persistTabs();
+        setStatus('saved');
+      } catch (e) {
+        setStatus('save failed');
+      }
+    };
+
+    // Debounced autosave: 800ms after last input
+    (function () {
+      let _t;
+      const delay = 800;
+      const schedule = () => {
+        clearTimeout(_t);
+        statusEl.textContent = 'saving…';
+        _t = setTimeout(() => {
+          saveToLocal();
+        }, delay);
+      };
+      memo.addEventListener('input', schedule);
+    })();
+
+    // Manual Save button
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.addEventListener('click', () => {
+      saveToLocal();
+    });
+
+    // Share / Import UI elements
+    const shareBtn = document.getElementById('shareBtn');
+    const importBtn = document.getElementById('importBtn');
+    const importInput = document.getElementById('importInput');
+
+    const exportState = () => {
+      const payload = {
+        version: 1,
+        exportedAt: Date.now(),
+        tabs,
+        currentTabId
+      };
+      return JSON.stringify(payload, null, 2);
+    };
+
+    const downloadJSON = (jsonStr, filename = 'fullmemo.json') => {
+      try {
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    const shareState = async () => {
+      const json = exportState();
+      // always trigger a local download so user has a local copy
+      downloadJSON(json);
+
+      // then try Web Share API with file if available
+      try {
+        const blob = new Blob([json], { type: 'application/json' });
+        const file = new File([blob], 'fullmemo.json', { type: 'application/json' });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: 'Full Memo', text: 'Exported Full Memo JSON' });
+          setStatus('shared');
+          return;
+        }
+      } catch (e) {
+        // fallthrough to text share
+      }
+
+      // fallback: try share text
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: 'Full Memo', text: json });
+          setStatus('shared');
+          return;
+        } catch (e) {
+          // user cancelled or not supported
+        }
+      }
+      setStatus('exported');
+    };
+
+    shareBtn.addEventListener('click', () => {
+      // ensure latest content saved into tabs before exporting
+      saveCurrentToMemory();
+      persistTabs();
+      shareState();
+    });
+
+    // Import handling
+    importBtn.addEventListener('click', () => {
+      importInput.value = '';
+      importInput.click();
+    });
+
+    importInput.addEventListener('change', async (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      const ok = confirm('インポートすると現在のタブは上書きされます。よろしいですか？');
+      if (!ok) return;
+      try {
+        const text = await f.text();
+        const obj = JSON.parse(text);
+        if (!obj || !Array.isArray(obj.tabs)) throw new Error('invalid');
+        tabs = obj.tabs.map(t => ({ id: t.id || Date.now().toString(), title: t.title || '', content: t.content || '', updatedAt: t.updatedAt || Date.now() }));
+        currentTabId = obj.currentTabId || (tabs[0] && tabs[0].id) || null;
+        persistTabs();
+        renderTabs();
+        if (currentTabId) switchTab(currentTabId);
+        else if (tabs[0]) switchTab(tabs[0].id);
+        setStatus('imported');
+      } catch (e) {
+        setStatus('import failed');
+      }
+    });
+
+    const renderTabs = () => {
+      tabsContainer.innerHTML = '';
+      const truncate = (s) => {
+        if (!s) return '';
+        return s.length > 6 ? s.slice(0, 6) + '...' : s;
+      };
+
+      tabs.forEach((t, idx) => {
+        const item = document.createElement('div');
+        item.className = 'tabItem';
+
+        const btn = document.createElement('button');
+        btn.className = 'tab' + (t.id === currentTabId ? ' active' : '');
+        const firstLine = (t.content || '').split('\n')[0].trim();
+        btn.textContent = firstLine || t.title || `メモ${idx + 1}`;
+        btn.textContent = truncate(btn.textContent);
+        btn.dataset.id = t.id;
+        btn.addEventListener('click', () => switchTab(t.id));
+
+        const close = document.createElement('button');
+        close.className = 'tabClose';
+        close.title = 'Delete tab';
+        close.innerText = '×';
+        close.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          deleteTab(t.id);
+        });
+
+        item.appendChild(btn);
+        item.appendChild(close);
+        tabsContainer.appendChild(item);
+      });
+      const add = document.createElement('button');
+      add.textContent = '+';
+      add.id = 'addTabBtn';
+      add.className = 'tab add';
+      add.addEventListener('click', addNewTab);
+      tabsContainer.appendChild(add);
+    };
+
+    const switchTab = (id) => {
+      if (id === currentTabId) return;
+      saveCurrentToMemory();
+      currentTabId = id;
+      const t = tabs.find(x => x.id === id);
+      memo.value = t ? t.content : '';
+      updateLineCount();
+      persistTabs();
+      renderTabs();
+      setStatus('loaded');
+    };
+
+    const deleteTab = (id) => {
+      const idx = tabs.findIndex(x => x.id === id);
+      if (idx === -1) return;
+      const ok = confirm('このタブを削除しますか？');
+      if (!ok) return;
+      tabs.splice(idx, 1);
+      // choose new current tab
+      if (id === currentTabId) {
+        const next = tabs[idx] || tabs[idx - 1] || tabs[0];
+        currentTabId = next ? next.id : null;
+      }
+      if (!tabs.length) {
+        addNewTab();
+        return;
+      }
+      persistTabs();
+      renderTabs();
+      if (currentTabId) switchTab(currentTabId);
+      else {
+        memo.value = '';
+        updateLineCount();
+      }
+    };
+
+    function addNewTab() {
+      const id = Date.now().toString();
+      const title = `メモ${tabs.length + 1}`;
+      const tab = { id, title, content: '', updatedAt: Date.now() };
+      tabs.push(tab);
+      currentTabId = id;
+      persistTabs();
+      renderTabs();
+      memo.value = '';
+      updateLineCount();
+      memo.focus();
+    }
+
+    // Save when app is backgrounded or page is unloaded (better iPhone Safari coverage)
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) saveToLocal();
+    });
+    window.addEventListener('pagehide', saveToLocal);
+    window.addEventListener('beforeunload', saveToLocal);
+
+    // Load saved tabs on startup (migrate legacy single-content if present)
+    try {
+      const raw = localStorage.getItem(TABS_KEY);
+      if (raw) {
+        tabs = JSON.parse(raw) || [];
+        currentTabId = localStorage.getItem(CUR_TAB_KEY) || (tabs[0] && tabs[0].id);
+        if (!currentTabId && tabs.length) currentTabId = tabs[0].id;
+        if (!tabs.length) {
+          // ensure at least one tab
+          const id = Date.now().toString();
+          tabs = [{ id, title: 'メモ1', content: '', updatedAt: Date.now() }];
+          currentTabId = id;
+        }
+      } else {
+        // migrate legacy single memo if exists
+        const legacy = localStorage.getItem('fullmemo:content');
+        const content = legacy || '';
+        const id = Date.now().toString();
+        tabs = [{ id, title: 'メモ1', content, updatedAt: Date.now() }];
+        currentTabId = id;
+        persistTabs();
+      }
+      renderTabs();
+      if (currentTabId) switchTab(currentTabId);
+    } catch (e) {
+      // ignore storage errors (e.g., private mode)
+      // fallback to single empty tab
+      tabs = [{ id: '1', title: 'メモ1', content: '', updatedAt: Date.now() }];
+      currentTabId = '1';
+      renderTabs();
+      switchTab(currentTabId);
+    }
+  </script>
+</body>
+
+</html>
