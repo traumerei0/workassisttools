@@ -220,6 +220,47 @@
     textarea:focus {
       box-shadow: inset 0 0 0 3px rgba(147, 197, 253, 0.35);
     }
+
+    /* Dark theme overrides (not fully black; slightly bluish dark) */
+    [data-theme="dark"] {
+      --bg: #071427;
+      /* deep bluish dark */
+      --bar: rgba(6, 18, 36, 0.8);
+      --border: #102634;
+      --text: #e6f2ff;
+      --muted: #9fb0c6;
+      --btn: rgba(255, 255, 255, 0.04);
+      --btnBorder: rgba(255, 255, 255, 0.04);
+      --btnHover: rgba(255, 255, 255, 0.03);
+      --focus: #ffd87a;
+      /* gentle yellow for active underline in dark mode */
+      --theme-toggle-color: #ffd77a;
+      /* dark mode toggle: gentle yellow */
+    }
+
+    /* Theme toggle floating button (bottom-right) */
+    .theme-toggle {
+      position: fixed;
+      right: 12px;
+      bottom: 12px;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      border: none;
+      background: var(--theme-toggle-color, #8fb9ff);
+      color: #0b1220;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(2, 6, 23, 0.25);
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .theme-toggle:active {
+      transform: translateY(1px);
+    }
   </style>
 </head>
 
@@ -241,6 +282,7 @@
     <div class="tabs" id="tabs"></div>
     <textarea id="memo" placeholder="Write your note..."></textarea>
     <input id="importInput" type="file" accept=".json,application/json" style="display:none" />
+    <button id="themeToggle" class="theme-toggle" aria-label="Toggle theme"></button>
   </div>
 
   <script>
@@ -263,6 +305,31 @@
     };
     window.addEventListener('resize', setVh);
     setVh();
+
+    // Theme toggle: apply saved theme or system preference
+    const THEME_KEY = 'fullmemo:theme';
+    const themeToggle = document.getElementById('themeToggle');
+    const applyTheme = (t) => {
+      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      else document.documentElement.removeAttribute('data-theme');
+      try { localStorage.setItem(THEME_KEY, t); } catch (e) { }
+      if (themeToggle) themeToggle.title = t === 'dark' ? 'Switch to light' : 'Switch to dark';
+    };
+    const initTheme = () => {
+      let t = null;
+      try { t = localStorage.getItem(THEME_KEY); } catch (e) { }
+      if (!t) {
+        t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) ? 'dark' : 'light';
+      }
+      applyTheme(t === 'dark' ? 'dark' : 'light');
+    };
+    if (themeToggle) {
+      themeToggle.addEventListener('click', () => {
+        const cur = document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+        applyTheme(cur === 'dark' ? 'light' : 'dark');
+      });
+    }
+    initTheme();
 
     const countLines = (text) => {
       // 空でも「1行」扱い（見た目が自然）
