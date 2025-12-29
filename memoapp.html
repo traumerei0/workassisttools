@@ -14,6 +14,7 @@
       --muted: #6b7280;
       --btn: #ffffff;
       --btnBorder: #d9deea;
+      --header-hover-opacity: 0.08;
       --btnHover: #f3f6ff;
       --focus: #93c5fd;
     }
@@ -36,7 +37,8 @@
     .bar {
       display: flex;
       gap: 10px;
-      padding: 10px;
+      padding: 6px;
+      /* reduce to align with tab height */
       align-items: center;
       border-bottom: 1px solid var(--border);
       background: var(--bar);
@@ -65,6 +67,34 @@
 
     button:active {
       transform: translateY(1px);
+    }
+
+    /* Header buttons: make them flat/tab-like */
+    .bar>button {
+      padding: 6px 10px;
+      font-size: 14px;
+      min-height: 28px;
+      /* match tab visual height */
+      border-radius: 0;
+      border: none;
+      background: transparent;
+      box-shadow: none;
+      color: var(--text);
+    }
+
+    /* separators between header buttons */
+    .bar>button+button {
+      border-left: 1px solid var(--border);
+    }
+
+    .bar>button:hover {
+      background: rgba(147, 197, 253, var(--header-hover-opacity));
+    }
+
+    /* active: show underline without layout shift */
+    .bar>button:active {
+      box-shadow: inset 0 -2px 0 var(--focus);
+      transform: none;
     }
 
     .right {
@@ -101,8 +131,9 @@
       white-space: nowrap;
     }
 
-    .tab.active {
-      border-bottom-color: var(--focus);
+    /* Active state applies to the whole tab item (label + close) */
+    .tabItem.active {
+      border-bottom: 2px solid var(--focus);
       background: rgba(147, 197, 253, 0.06);
     }
 
@@ -116,7 +147,14 @@
       display: inline-flex;
       align-items: center;
       margin: 0;
-      padding: 0;
+      padding: 0 6px;
+      /* horizontal padding for whole tab */
+      border-right: 1px solid var(--border);
+      background: transparent;
+    }
+
+    .tabItem:last-of-type {
+      border-right: none;
     }
 
     .tabClose {
@@ -130,10 +168,22 @@
       background: transparent;
       color: var(--muted);
       cursor: pointer;
+      border-radius: 0;
+      /* remove ellipse */
     }
 
     .tabClose:active {
       transform: translateY(1px);
+    }
+
+    /* Hover: apply background to the whole tab item (label + close) */
+    .tabItem:hover {
+      background: rgba(147, 197, 253, 0.06);
+    }
+
+    .tabItem:hover .tab,
+    .tabItem:hover .tabClose {
+      color: var(--text);
     }
 
     .lines {
@@ -183,13 +233,13 @@
       <button id="importBtn" type="button">Import</button>
 
       <div class="right">
-        <div class="lines" id="lines">行: 1</div>
+        <div class="lines" id="lines">Lines: 1</div>
         <div class="status" id="status">ready</div>
       </div>
     </div>
 
     <div class="tabs" id="tabs"></div>
-    <textarea id="memo" placeholder="ここにメモ…"></textarea>
+    <textarea id="memo" placeholder="Write your note..."></textarea>
     <input id="importInput" type="file" accept=".json,application/json" style="display:none" />
   </div>
 
@@ -222,7 +272,7 @@
     };
 
     const updateLineCount = () => {
-      linesEl.textContent = `行: ${countLines(memo.value)}`;
+      linesEl.textContent = `raw: ${countLines(memo.value)}`;
     };
 
     memo.addEventListener('input', updateLineCount);
@@ -388,7 +438,7 @@
     importInput.addEventListener('change', async (ev) => {
       const f = ev.target.files && ev.target.files[0];
       if (!f) return;
-      const ok = confirm('インポートすると現在のタブは上書きされます。よろしいですか？');
+      const ok = confirm('Import will overwrite current tabs. Continue?');
       if (!ok) return;
       try {
         const text = await f.text();
@@ -415,12 +465,12 @@
 
       tabs.forEach((t, idx) => {
         const item = document.createElement('div');
-        item.className = 'tabItem';
+        item.className = 'tabItem' + (t.id === currentTabId ? ' active' : '');
 
         const btn = document.createElement('button');
-        btn.className = 'tab' + (t.id === currentTabId ? ' active' : '');
+        btn.className = 'tab';
         const firstLine = (t.content || '').split('\n')[0].trim();
-        btn.textContent = firstLine || t.title || `メモ${idx + 1}`;
+        btn.textContent = firstLine || t.title || `Note ${idx + 1}`;
         btn.textContent = truncate(btn.textContent);
         btn.dataset.id = t.id;
         btn.addEventListener('click', () => switchTab(t.id));
@@ -461,7 +511,7 @@
     const deleteTab = (id) => {
       const idx = tabs.findIndex(x => x.id === id);
       if (idx === -1) return;
-      const ok = confirm('このタブを削除しますか？');
+      const ok = confirm('Delete this tab?');
       if (!ok) return;
       tabs.splice(idx, 1);
       // choose new current tab
@@ -484,7 +534,7 @@
 
     function addNewTab() {
       const id = Date.now().toString();
-      const title = `メモ${tabs.length + 1}`;
+      const title = `Note ${tabs.length + 1}`;
       const tab = { id, title, content: '', updatedAt: Date.now() };
       tabs.push(tab);
       currentTabId = id;
@@ -512,7 +562,7 @@
         if (!tabs.length) {
           // ensure at least one tab
           const id = Date.now().toString();
-          tabs = [{ id, title: 'メモ1', content: '', updatedAt: Date.now() }];
+          tabs = [{ id, title: 'Note 1', content: '', updatedAt: Date.now() }];
           currentTabId = id;
         }
       } else {
@@ -520,7 +570,7 @@
         const legacy = localStorage.getItem('fullmemo:content');
         const content = legacy || '';
         const id = Date.now().toString();
-        tabs = [{ id, title: 'メモ1', content, updatedAt: Date.now() }];
+        tabs = [{ id, title: 'Note 1', content, updatedAt: Date.now() }];
         currentTabId = id;
         persistTabs();
       }
@@ -529,7 +579,7 @@
     } catch (e) {
       // ignore storage errors (e.g., private mode)
       // fallback to single empty tab
-      tabs = [{ id: '1', title: 'メモ1', content: '', updatedAt: Date.now() }];
+      tabs = [{ id: '1', title: 'Note 1', content: '', updatedAt: Date.now() }];
       currentTabId = '1';
       renderTabs();
       switchTab(currentTabId);
